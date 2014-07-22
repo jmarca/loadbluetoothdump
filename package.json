@@ -1,0 +1,31 @@
+{
+  "name": "loadbluetoothdump",
+  "version": "0.0.1",
+  "description": "load the bluetooth dump into a db",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/jmarca/loadbluetoothdump"
+  },
+  "author": "James E. Marca",
+  "license": "GPL v2",
+  "bugs": {
+    "url": "https://github.com/jmarca/loadbluetoothdump/issues"
+  },
+  "homepage": "https://github.com/jmarca/loadbluetoothdump",
+  "dependencies": {
+    "rw": "^0.1.4",
+    "csv-stringify": "0.0.3",
+    "pg": "git://github.com/brianc/node-postgres"
+  },
+  "devDependencies": {
+    "should": "^4.0.4",
+    "config_okay": "0.0.2"
+  }
+}
