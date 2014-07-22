@@ -24,7 +24,7 @@ var prepare_table = function (client, callback) {
 }
 
 //var bt_parser = require('../.')
-var bt_parser=require('../lib/parser2')
+var bt_parser=require('../lib/parser')
 
 before(function(done){
     config_okay(config_file,function(err,c){
