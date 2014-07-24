@@ -15,5 +15,6 @@ CREATE TABLE smartsig.bluetooth_data  (
  lastpolltime timestamp with time zone not null,
  lastgoodpoll timestamp with time zone not null,
  speed numeric,
- speed_units varchar(32)
+ speed_units varchar(32),
+ xmlrecord xml
 );

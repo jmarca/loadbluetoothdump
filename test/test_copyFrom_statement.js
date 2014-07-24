@@ -1,9 +1,30 @@
 var should = require('should')
-var config={}
-
 
 var pg = require('pg')
 var Client = pg.Client
+
+
+var temp_table_query="create temp table names(user_name varchar(128),age integer)"
+
+var prepare_table = function (client, callback) {
+    client.query(temp_table_query
+                ,function (err, result) {
+                     should.not.exist(err)
+                     callback(err,result);
+                 })
+}
+
+
+
+pg.connect({'user':'postgres',database:'test'},function (err, client, client_done) {
+    console.log(err)
+    console.log(client)
+    return client_done()
+
+})
+
+return null
+
 var client = new Client({user: 'slash', database: 'test'});
 client.connect();
 client.query("drop table names")

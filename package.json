@@ -21,11 +21,10 @@
   "homepage": "https://github.com/jmarca/loadbluetoothdump",
   "dependencies": {
     "rw": "^0.1.4",
-    "csv-stringify": "0.0.3",
-    "pg": "git://github.com/brianc/node-postgres"
+    "pg": "",
+    "config_okay": "0.0.2"
   },
   "devDependencies": {
-    "should": "^4.0.4",
-    "config_okay": "0.0.2"
+    "should": "^4.0.4"
   }
 }

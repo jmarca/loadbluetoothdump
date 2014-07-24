@@ -61,7 +61,9 @@ before(function(done){
           ,'lastpolltime timestamp with time zone not null,'
           ,'lastgoodpoll timestamp with time zone not null,'
           ,'speed numeric,'
-          ,'speed_units varchar(32))'
+          ,'speed_units varchar(32),'
+          ,'xmlrecord xml'
+          ,')'
         ].join('')
 
         var connstring = "pg://"
@@ -79,7 +81,7 @@ before(function(done){
 describe('copy data into db',function(){
 
     it('should work',function(done){
-        pg.connect(config.connstring, function (err, client, conn_done) {
+        pg.connect(config.connstring, function (err, client, client_done) {
             should.not.exist(err)
             var lines=0
             prepare_table(client, function () {
@@ -97,10 +99,16 @@ describe('copy data into db',function(){
                     should.not.exist(error)
                     // check db here
                     client.query('select * from '+config.postgresql.table,function(e,d){
+                        console.log(e)
                         should.not.exist(e)
                         should.exist(d)
                         d.should.have.property('rows').with.lengthOf(50)
-                        client.end()
+                        d.rows.forEach(function(row,i){
+                            if(i===0){
+                                console.log(row.xmlrecord, row.wf)
+                            }
+                        })
+                        client_done()
                         return done()
                     })
                 })

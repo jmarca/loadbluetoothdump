@@ -1,2 +1,4 @@
 test.config.json
 /node_modules/
+/.tern-port
+/.tern-project
