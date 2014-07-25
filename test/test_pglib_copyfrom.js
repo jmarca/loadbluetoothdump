@@ -40,7 +40,7 @@ pg.connect({'user':'postgres',database:'test'},function (err, client, client_don
                 ok = writer.write('user,'+i+'\n')
 
             }while(i>0
-                    //&& ok
+                   //&& ok
                   )
             if(i>0){
                 // write is clogged

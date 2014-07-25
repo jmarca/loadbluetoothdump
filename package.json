@@ -22,7 +22,9 @@
   "dependencies": {
     "rw": "^0.1.4",
     "pg": "",
-    "config_okay": "0.0.2"
+    "config_okay": "0.0.2",
+    "winston": "^0.7.3",
+    "libxmljs": "^0.11.0"
   },
   "devDependencies": {
     "should": "^4.0.4"
