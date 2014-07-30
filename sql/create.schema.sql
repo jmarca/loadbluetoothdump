@@ -1,4 +1,4 @@
-SET search_path TO smartsig; -- cheat to osm_upgrade, but need public for hstore;
+SET search_path TO smartsig;
 drop if exists smartsig.bluetooth_data;
 CREATE TABLE smartsig.bluetooth_data  (
  id serial primary key,
