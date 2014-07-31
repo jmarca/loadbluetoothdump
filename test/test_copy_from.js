@@ -18,12 +18,49 @@ var os = require('os')
 var queue = require("queue-async")
 
 var temp_table_query
-var prepare_table = function (client, callback) {
-    client.query(temp_table_query
-                ,function (err, result) {
-                     should.not.exist(err)
-                     callback(err,result);
-                 })
+
+var prepare_temp_tables = function (client, callback) {
+
+    // I have a number of temp tables to create
+    var bt_xml_project = "CREATE TEMP TABLE bt_xml_project ( projectid    integer primary key, title VARCHAR(128))"
+
+    var bt_xml_location = "CREATE TEMP TABLE bt_xml_location (  latitude     numeric,  locationid   integer primary key,  locationname VARCHAR(128),  longitude    numeric,  projectid    integer not null REFERENCES bt_xml_project (projectid))"
+
+    var bt_xml_location_checkin = "CREATE TEMP TABLE bt_xml_location_checkin (  active INTEGER,  lastcheckin  timestamp with time zone not null,  locationid   integer not null  REFERENCES bt_xml_location (locationid),  primary key(locationid,lastcheckin))"
+
+    var bt_xml_segment = "CREATE TEMP TABLE bt_xml_segment (  segmentid      integer primary key,  fromlocationid integer not null REFERENCES bt_xml_location (locationid),  tolocationid   integer not null REFERENCES bt_xml_location (locationid),  route          varchar(128),  groupby        integer,  projectid      integer not null REFERENCES bt_xml_project (projectid))"
+
+    var bt_xml_observation = "CREATE TEMP TABLE bt_xml_observation(  segmentid      integer not null references bt_xml_segment(segmentid),  ts    timestamp with time zone not null,  data_ts timestamp with time zone not null,  radar_lane_id integer,  station_lane_id integer,  numtrips       integer,  speed          numeric,  distance           numeric,  estimatedtimetaken numeric,  traveltime         numeric,  primary key(segmentid,ts,data_ts,radar_lane_id,station_lane_id))"
+
+    var create_statements = [temp_table_query
+                             ,bt_xml_project
+                             ,bt_xml_location
+                             ,bt_xml_location_checkin
+                             ,bt_xml_segment
+                             ,bt_xml_observation
+                            ]
+
+    var q = queue(1);
+    q.defer(function(cb){
+        bt_parser.set_search_path(client,cb)
+    })
+    create_statements.forEach(function(statement) {
+        q.defer(function(cb){
+            client.query(statement
+                         ,function (err, result) {
+                             console.log(err)
+                             should.not.exist(err)
+                             return cb(err)
+                         })
+        })
+        return null
+    })
+    q.awaitAll(function(error, results) {
+        console.log("all done with db temp table creation")
+        return callback()
+    })
+
+    return null
 }
 
 //var bt_parser = require('../.')
@@ -87,7 +124,7 @@ describe('copy data into db',function(){
         pg.connect(config.connstring, function (err, client, client_done) {
             should.not.exist(err)
             var lines=0
-            prepare_table(client, function () {
+            prepare_temp_tables(client, function () {
                 var copy_statement = bt_parser.copy_statement(config.postgresql.table)
                 //console.log(copy_statement)
                 var writer = client.copyFrom( copy_statement );
@@ -116,69 +153,92 @@ describe('copy data into db',function(){
                         var perlwriter = client.copyFrom( copy_statement_perl );
                         parser_instance.perl_write(perlwriter)
                         perlwriter.on('close',function(err){
+                            parser_instance.perl_parser(client,function(e){
 
-                            var q = queue(5);
-                            // setup tests
-                            var tasks=[]
-                            tasks.push(function(callback){
-                                client.query('select * from '+config.postgresql.table,function(e,d){
-                                    should.not.exist(e)
-                                    should.exist(d)
-                                    d.should.have.property('rows').with.lengthOf(1210)
-                                    //console.log(d.rows.length)
-                                    d.rows.forEach(function(row,i){
-                                        row.should.have.keys(
-                                            'id'
-                                            ,'ts'
-                                            ,'radar_lane_id'
-                                            ,'station_lane_id'
-                                            ,'name'
-                                            ,'route'
-                                            ,'direction'
-                                            ,'postmile'
-                                            ,'enabled'
-                                            ,'firmware'
-                                            ,'sample_interval'
-                                            ,'lastpolltime'
-                                            ,'lastgoodpoll'
-                                            ,'speed'
-                                            ,'speed_units'
-                                        )
+                                var q = queue(5);
+                                // setup tests
+                                var tasks=[]
+                                tasks.push(function(callback){
+                                    client.query('select * from '+config.postgresql.table,function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(50) // (1210)
+                                        //console.log(d.rows.length)
+                                        d.rows.forEach(function(row,i){
+                                            row.should.have.keys(
+                                                'id'
+                                                ,'ts'
+                                                ,'radar_lane_id'
+                                                ,'station_lane_id'
+                                                ,'name'
+                                                ,'route'
+                                                ,'direction'
+                                                ,'postmile'
+                                                ,'enabled'
+                                                ,'firmware'
+                                                ,'sample_interval'
+                                                ,'lastpolltime'
+                                                ,'lastgoodpoll'
+                                                ,'speed'
+                                                ,'speed_units'
+                                            )
+                                        })
+                                        return callback()
                                     })
-                                    return callback()
                                 })
-                            })
-                            tasks.push(function(callback){
-                                client.query('select * from perlhash',function(e,d){
-                                    should.not.exist(e)
-                                    should.exist(d)
-                                    d.should.have.property('rows').with.lengthOf(1210)
-                                    //console.log(d.rows.length)
+                                tasks.push(function(callback){
+                                    client.query('select * from perlhash',function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(50) //(1210)
+                                        //console.log(d.rows.length)
 
-                                    return callback()
+                                        return callback()
+                                    })
                                 })
-                            })
 
-                            tasks.push(function(callback){
-
-                                client.query('with perldata as (select smartsig.perl_xml_location_decoder_from_segment(data) from perlhash ) select * from perldata',function(e,d){
-                                    should.not.exist(e)
-                                    should.exist(d)
-                                    d.should.have.property('rows').with.lengthOf(100)
-                                    console.log(d.rows[0])
-                                    return callback()
+                                tasks.push(function(callback){
+                                    client.query('select * from bt_xml_project',function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(1)
+                                        return callback()
+                                    })
                                 })
-                            })
+                                tasks.push(function(callback){
+                                    client.query('select * from bt_xml_location',function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(5)
+                                        return callback()
+                                    })
+                                })
+                                tasks.push(function(callback){
+                                    client.query('select * from bt_xml_segment',function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(8)
+                                        return callback()
+                                    })
+                                })
+                                tasks.push(function(callback){
+                                    client.query('select * from bt_xml_observation',function(e,d){
+                                        should.not.exist(e)
+                                        should.exist(d)
+                                        d.should.have.property('rows').with.lengthOf(50)
+                                        return callback()
+                                    })
+                                })
 
-                            tasks.forEach(function(t) { q.defer(t); });
-                            q.awaitAll(function(error, results) {
-                                console.log("all done with db checks")
-                                client_done()
-                                return done()
-                            })
+                                tasks.forEach(function(t) { q.defer(t); });
+                                q.awaitAll(function(error, results) {
+                                    console.log("all done with db checks")
+                                    client_done()
+                                    return done()
+                                })
 
+                            })
                         })
-
                     })
                 })
 
