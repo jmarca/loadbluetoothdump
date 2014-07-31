@@ -48,7 +48,7 @@ var prepare_temp_tables = function (client, callback) {
         q.defer(function(cb){
             client.query(statement
                          ,function (err, result) {
-                             console.log(err)
+                             //console.log(err)
                              should.not.exist(err)
                              return cb(err)
                          })
@@ -56,7 +56,7 @@ var prepare_temp_tables = function (client, callback) {
         return null
     })
     q.awaitAll(function(error, results) {
-        console.log("all done with db temp table creation")
+        //console.log("all done with db temp table creation")
         return callback()
     })
 
@@ -120,7 +120,7 @@ before(function(done){
 
 describe('copy data into db',function(){
 
-    it('should work',function(done){
+    it('should work for one file',function(done){
         pg.connect(config.connstring, function (err, client, client_done) {
             should.not.exist(err)
             var lines=0
@@ -146,9 +146,9 @@ describe('copy data into db',function(){
                     // stash away perl strings
                     var create_statement = bt_parser.create_perlhash_statement('perlhash')
                     client.query(create_statement,function(e,r){
-                        console.log(e)
+                        //console.log(e)
                         should.not.exist(e)
-                        console.log('created perlhash temp table')
+                        //console.log('created perlhash temp table')
                         var copy_statement_perl = bt_parser.copy_perlhash_statement('perlhash')
                         var perlwriter = client.copyFrom( copy_statement_perl );
                         parser_instance.perl_write(perlwriter)
@@ -232,8 +232,9 @@ describe('copy data into db',function(){
 
                                 tasks.forEach(function(t) { q.defer(t); });
                                 q.awaitAll(function(error, results) {
-                                    console.log("all done with db checks")
+                                    //console.log("all done with db checks")
                                     client_done()
+                                    pg.end()
                                     return done()
                                 })
 
@@ -252,7 +253,160 @@ describe('copy data into db',function(){
             })
 
 
+        });
+    });
+
+
+})
+
+describe('copy lots of data into db',function(){
+
+    it('should work for two files',function(done){
+        pg.connect(config.connstring, function (err, client, client_done) {
+            should.not.exist(err)
+            prepare_temp_tables(client, function () {
+                var copy_statement = bt_parser.copy_statement(config.postgresql.table)
+                var files = ["test/bluetooth_log-2014-07-28-21\:00\:00.048" //bit file1210 records
+                             ,"test/bluetoothdump" // small file, 50 records
+                            ]
+                var fq = new queue(1)
+                fq.defer(function(cb){
+                    var create_statement = bt_parser.create_perlhash_statement('perlhash')
+                    client.query(create_statement,function(e,r){
+                        //console.log(e)
+                        should.not.exist(e)
+                        return cb(e)
+                    })
+                })
+
+                function process_file(file,callback){
+                    var _reader = rw.fileReader(file)
+                    var parser_instance
+
+                    var writer = client.copyFrom( copy_statement );
+
+                    writer.on('error', function (error) {
+                        console.log("Sorry, error happens", error);
+                        throw new Error("COPY FROM stream should not emit errors" + JSON.stringify(error))
+                    });
+
+                    writer.on('close',function(error){
+                        //console.log("Data inserted sucessfully");
+                        should.not.exist(error)
+
+                        var copy_statement_perl = bt_parser.copy_perlhash_statement('perlhash')
+                        var perlwriter = client.copyFrom( copy_statement_perl );
+                        parser_instance.perl_write(perlwriter)
+                        perlwriter.on('close',function(err){
+                            parser_instance.perl_parser(client,function(e){
+                                parser_instance.perl_truncate(client,callback)
+                                return null
+                            })
+                        })
+                    })
+                    parser_instance=bt_parser(_reader,writer)
+                }
+                files.forEach(function(f){
+                    fq.defer(process_file,f)
+                    return null
+                })
+
+                fq.awaitAll(function(error, results) {
+                    var q = queue(5);
+                    // setup tests
+                    var tasks=[]
+                    tasks.push(function(callback){
+                        client.query('select * from '+config.postgresql.table,function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf (1210 + 50)
+                            //console.log(d.rows.length)
+                            d.rows.forEach(function(row,i){
+                                row.should.have.keys(
+                                    'id'
+                                    ,'ts'
+                                    ,'radar_lane_id'
+                                    ,'station_lane_id'
+                                    ,'name'
+                                    ,'route'
+                                    ,'direction'
+                                    ,'postmile'
+                                    ,'enabled'
+                                    ,'firmware'
+                                    ,'sample_interval'
+                                    ,'lastpolltime'
+                                    ,'lastgoodpoll'
+                                    ,'speed'
+                                    ,'speed_units'
+                                )
+                            })
+                            return callback()
+                        })
+                    })
+                    tasks.push(function(callback){
+                        client.query('select * from perlhash',function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf(0) //because I called truncate
+                            //console.log(d.rows.length)
+
+                            return callback()
+                        })
+                    })
+
+                    tasks.push(function(callback){
+                        client.query('select * from bt_xml_project',function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf(1)
+                            return callback()
+                        })
+                    })
+                    tasks.push(function(callback){
+                        client.query('select * from bt_xml_location',function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf(5)
+                            return callback()
+                        })
+                    })
+                    tasks.push(function(callback){
+                        client.query('select * from bt_xml_segment',function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf(8)
+                            return callback()
+                        })
+                    })
+                    tasks.push(function(callback){
+                        client.query('select * from bt_xml_observation',function(e,d){
+                            should.not.exist(e)
+                            should.exist(d)
+                            d.should.have.property('rows').with.lengthOf(1210+50)
+                            return callback()
+                        })
+                    })
+
+                    tasks.forEach(function(t) { q.defer(t); });
+                    q.awaitAll(function(error, results) {
+                        //console.log("all done with db checks")
+                        client_done()
+                        pg.end()
+                        return done()
+                    })
+
+
+                 })
+
+                // open a reader
+
+                return null
+
+            })
+
+
     });
   });
+
 
 })
