@@ -11,9 +11,9 @@ CREATE TABLE bt_xml_project (
 );
 
 CREATE TABLE bt_xml_location (
-  latitude     numeric,
   locationid   integer primary key,
   locationname VARCHAR(128),
+  latitude     numeric,
   longitude    numeric,
   projectid    integer not null REFERENCES bt_xml_project (projectid)
 );

@@ -130,8 +130,8 @@ describe('copy data into db',function(){
                 var writer = client.copyFrom( copy_statement );
 
                 var _reader = rw.fileReader
-                //("test/bluetooth_log-2014-07-28-21\:00\:00.048")
-                ("test/bluetoothdump")
+                ("test/bluetooth_log-2014-07-28-21\:00\:00.048") //bit file1210 records
+                //("test/bluetoothdump") // small file, 50 records
                 var parser_instance
 
                 writer.on('error', function (error) {
@@ -162,7 +162,7 @@ describe('copy data into db',function(){
                                     client.query('select * from '+config.postgresql.table,function(e,d){
                                         should.not.exist(e)
                                         should.exist(d)
-                                        d.should.have.property('rows').with.lengthOf(50) // (1210)
+                                        d.should.have.property('rows').with.lengthOf (1210)
                                         //console.log(d.rows.length)
                                         d.rows.forEach(function(row,i){
                                             row.should.have.keys(
@@ -190,7 +190,7 @@ describe('copy data into db',function(){
                                     client.query('select * from perlhash',function(e,d){
                                         should.not.exist(e)
                                         should.exist(d)
-                                        d.should.have.property('rows').with.lengthOf(50) //(1210)
+                                        d.should.have.property('rows').with.lengthOf(1210)
                                         //console.log(d.rows.length)
 
                                         return callback()
@@ -225,7 +225,7 @@ describe('copy data into db',function(){
                                     client.query('select * from bt_xml_observation',function(e,d){
                                         should.not.exist(e)
                                         should.exist(d)
-                                        d.should.have.property('rows').with.lengthOf(50)
+                                        d.should.have.property('rows').with.lengthOf(1210)
                                         return callback()
                                     })
                                 })
