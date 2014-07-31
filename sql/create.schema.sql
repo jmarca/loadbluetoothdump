@@ -1,5 +1,5 @@
 SET search_path TO smartsig;
-drop table smartsig.bluetooth_data;
+drop table smartsig.bluetooth_data cascade;
 CREATE TABLE smartsig.bluetooth_data  (
  id serial primary key,
  ts timestamp with time zone not null,
