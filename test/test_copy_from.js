@@ -1,6 +1,7 @@
 /* global require console process describe it */
 
 var should = require('should')
+
 var path    = require('path')
 var rootdir = path.normalize(__dirname)
 var config_file = rootdir+'/../test.config.json'
@@ -13,6 +14,8 @@ var config={}
 var pg = require('pg')
 var rw = require ('rw')
 var os = require('os')
+
+var queue = require("queue-async")
 
 var temp_table_query
 var prepare_table = function (client, callback) {
@@ -62,7 +65,7 @@ before(function(done){
           ,'lastgoodpoll timestamp with time zone not null,'
           ,'speed numeric,'
           ,'speed_units varchar(32),'
-          ,'xmlrecord xml'
+          ,'UNIQUE (ts,radar_lane_id,station_lane_id)'
           ,')'
         ].join('')
 
@@ -89,6 +92,11 @@ describe('copy data into db',function(){
                 //console.log(copy_statement)
                 var writer = client.copyFrom( copy_statement );
 
+                var _reader = rw.fileReader
+                //("test/bluetooth_log-2014-07-28-21\:00\:00.048")
+                ("test/bluetoothdump")
+                var parser_instance
+
                 writer.on('error', function (error) {
                     console.log("Sorry, error happens", error);
                     throw new Error("COPY FROM stream should not emit errors" + JSON.stringify(error))
@@ -97,27 +105,88 @@ describe('copy data into db',function(){
                 writer.on('close',function(error){
                     //console.log("Data inserted sucessfully");
                     should.not.exist(error)
-                    // check db here
-                    client.query('select * from '+config.postgresql.table,function(e,d){
+
+                    // stash away perl strings
+                    var create_statement = bt_parser.create_perlhash_statement('perlhash')
+                    client.query(create_statement,function(e,r){
                         console.log(e)
                         should.not.exist(e)
-                        should.exist(d)
-                        d.should.have.property('rows').with.lengthOf(50)
-                        d.rows.forEach(function(row,i){
-                            if(i===0){
-                                console.log(row.xmlrecord, row.wf)
-                            }
+                        console.log('created perlhash temp table')
+                        var copy_statement_perl = bt_parser.copy_perlhash_statement('perlhash')
+                        var perlwriter = client.copyFrom( copy_statement_perl );
+                        parser_instance.perl_write(perlwriter)
+                        perlwriter.on('close',function(err){
+
+                            var q = queue(5);
+                            // setup tests
+                            var tasks=[]
+                            tasks.push(function(callback){
+                                client.query('select * from '+config.postgresql.table,function(e,d){
+                                    should.not.exist(e)
+                                    should.exist(d)
+                                    d.should.have.property('rows').with.lengthOf(1210)
+                                    //console.log(d.rows.length)
+                                    d.rows.forEach(function(row,i){
+                                        row.should.have.keys(
+                                            'id'
+                                            ,'ts'
+                                            ,'radar_lane_id'
+                                            ,'station_lane_id'
+                                            ,'name'
+                                            ,'route'
+                                            ,'direction'
+                                            ,'postmile'
+                                            ,'enabled'
+                                            ,'firmware'
+                                            ,'sample_interval'
+                                            ,'lastpolltime'
+                                            ,'lastgoodpoll'
+                                            ,'speed'
+                                            ,'speed_units'
+                                        )
+                                    })
+                                    return callback()
+                                })
+                            })
+                            tasks.push(function(callback){
+                                client.query('select * from perlhash',function(e,d){
+                                    should.not.exist(e)
+                                    should.exist(d)
+                                    d.should.have.property('rows').with.lengthOf(1210)
+                                    //console.log(d.rows.length)
+
+                                    return callback()
+                                })
+                            })
+
+                            tasks.push(function(callback){
+
+                                client.query('with perldata as (select smartsig.perl_xml_location_decoder_from_segment(data) from perlhash ) select * from perldata',function(e,d){
+                                    should.not.exist(e)
+                                    should.exist(d)
+                                    d.should.have.property('rows').with.lengthOf(100)
+                                    console.log(d.rows[0])
+                                    return callback()
+                                })
+                            })
+
+                            tasks.forEach(function(t) { q.defer(t); });
+                            q.awaitAll(function(error, results) {
+                                console.log("all done with db checks")
+                                client_done()
+                                return done()
+                            })
+
                         })
-                        client_done()
-                        return done()
+
                     })
                 })
 
 
+                parser_instance=bt_parser(_reader,writer)
+
                 // open a reader
 
-                var _reader = rw.fileReader("test/bluetoothdump")
-                bt_parser(_reader,writer)
                 return null
 
             })

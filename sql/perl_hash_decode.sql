@@ -1,6 +1,7 @@
 SET search_path TO smartsig;
 DROP TABLE bt_xml_segment cascade;
 DROP TABLE bt_xml_location_checkin cascade;
+DROP TABLE bt_xml_observation cascade;
 DROP TABLE bt_xml_location cascade;
 DROP TABLE bt_xml_project cascade;
 
@@ -14,34 +15,43 @@ CREATE TABLE bt_xml_location (
   locationid   integer primary key,
   locationname VARCHAR(128),
   longitude    numeric,
-  projectid    integer REFERENCES bt_xml_project (projectid)
+  projectid    integer not null REFERENCES bt_xml_project (projectid)
 );
 
 CREATE TABLE bt_xml_location_checkin (
   active INTEGER,
   lastcheckin  timestamp with time zone not null,
-  locationid   integer REFERENCES bt_xml_location (locationid),
+  locationid   integer not null  REFERENCES bt_xml_location (locationid),
   primary key(locationid,lastcheckin)
 );
 
 CREATE TABLE bt_xml_segment (
   segmentid      integer primary key,
-  fromlocationid integer REFERENCES bt_xml_location (locationid),
-  tolocationid   integer REFERENCES bt_xml_location (locationid),
+  fromlocationid integer not null REFERENCES bt_xml_location (locationid),
+  tolocationid   integer not null REFERENCES bt_xml_location (locationid),
   route          varchar(128),
   groupby        integer,
-  projectid      integer REFERENCES bt_xml_project (projectid),
+  projectid      integer not null REFERENCES bt_xml_project (projectid)
+);
+
+CREATE TABLE bt_xml_observation(
+  segmentid      integer not null references bt_xml_segment(segmentid),
   ts    timestamp with time zone not null,
+  data_ts timestamp with time zone not null,
+  radar_lane_id integer,
+  station_lane_id integer,
   numtrips       integer,
   speed          numeric,
   distance           numeric,
   estimatedtimetaken numeric,
-  traveltime         numeric
+  traveltime         numeric,
+  primary key(segmentid,ts,data_ts,radar_lane_id,station_lane_id),
+  foreign key (data_ts,radar_lane_id,station_lane_id) references smartsig.bluetooth_data(ts,radar_lane_id,station_lane_id)
 );
 
 
 
-CREATE OR REPLACE FUNCTION perl_xml_segment_decoder (TEXT) RETURNS bt_xml_segment AS $$
+CREATE OR REPLACE FUNCTION perl_xml_segment_decoder () RETURNS setof bt_xml_segment AS $$
     use strict;
     my $unescape = sub {
         my $escaped = shift;
@@ -50,31 +60,64 @@ CREATE OR REPLACE FUNCTION perl_xml_segment_decoder (TEXT) RETURNS bt_xml_segmen
         return $escaped;
     };
 
-    my $chars = $unescape->( $_[0] );
-    my $VAR1;
-    eval($chars);
-    # clean up some entries we are not using
-    my $segment = $VAR1->{'segment'};
-$segment->{'ts'} = $segment->{'Timestamp'};
-my %bar = map { lc $_ => $segment->{$_} } qw{
-  SegmentID
-  FromLocationID
-  ToLocationID
-  Route
-  GroupBy
-  ProjectID
-  ts
-  NumTrips
-  Speed
-  Distance
-  EstimatedTimeTaken
-  TravelTime
-};
-    return \%bar;
+    my $sth = spi_query("SELECT * FROM perlhash");
+    while ( defined( my $row = spi_fetchrow($sth) ) ) {
+        my $chars = $unescape->( $row->{data} );
+        my $VAR1;
+        eval($chars);
+
+        # clean up some entries we are not using
+        my $segment = $VAR1->{'segment'};
+        my %bar = map { lc $_ => $segment->{$_} } qw{
+          SegmentID
+          FromLocationID
+          ToLocationID
+          Route
+          GroupBy
+          ProjectID
+        };
+        return_next \%bar;
+    }
+    return undef;
+$$ LANGUAGE plperl;
+
+CREATE OR REPLACE FUNCTION perl_xml_segment_obs_decoder () RETURNS setof bt_xml_observation AS $$
+    use strict;
+    my $unescape = sub {
+        my $escaped = shift;
+        $escaped =~ s/%u([0-9a-f]{4})/chr(hex($1))/eig;
+        $escaped =~ s/%([0-9a-f]{2})/chr(hex($1))/eig;
+        return $escaped;
+    };
+
+    my $sth = spi_query("SELECT * FROM perlhash");
+    while ( defined( my $row = spi_fetchrow($sth) ) ) {
+        my $chars = $unescape->( $row->{data} );
+        my $VAR1;
+        eval($chars);
+
+        # clean up some entries we are not using
+        my $segment = $VAR1->{'segment'};
+        $segment->{'ts'} = $segment->{'Timestamp'};
+        my %bar = map { lc $_ => $segment->{$_} } qw{
+          SegmentID
+          ts
+          NumTrips
+          Speed
+          Distance
+          EstimatedTimeTaken
+          TravelTime
+        };
+        $bar{data_ts}=$row->{ts};
+        $bar{radar_lane_id}=$row->{radar_lane_id};
+        $bar{station_lane_id}=$row->{station_lane_id};
+        return_next \%bar;
+    }
+    return undef;
 $$ LANGUAGE plperl;
 
 
-CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_location (TEXT) RETURNS bt_xml_location AS $$
+CREATE OR REPLACE FUNCTION perl_xml_project_decoder_from_location () RETURNS setof bt_xml_project AS $$
     use strict;
     my $unescape = sub {
         my $escaped = shift;
@@ -83,21 +126,24 @@ CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_location (TEXT) RETURN
         return $escaped;
     };
 
-    my $chars = $unescape->( $_[0] );
-    my $VAR1;
-    eval($chars);
-    # clean up some entries we are not using
-    my $location = $VAR1->{'location'};
-my %bar = map { lc $_ => $location->{$_} } qw{
-  Latitude
-  LocationID
-  LocationName
-  Longitude
-};
-    return \%bar;
+    my $sth = spi_query("SELECT * FROM perlhash AS b(a)");
+    while ( defined( my $row = spi_fetchrow($sth) ) ) {
+        my $chars = $unescape->( $row->{a} );
+        my $VAR1;
+        eval($chars);
+
+        # clean up some entries we are not using
+        my $location = $VAR1->{'location'};
+        my %bar = map { lc $_ => $location->{$_} } qw{
+          ProjectID
+          Title
+        };
+        return_next \%bar;
+    }
+    return undef;
 $$ LANGUAGE plperl;
 
-CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_segment (TEXT) RETURNS setof bt_xml_location AS $$
+CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_location () RETURNS setof bt_xml_location AS $$
     use strict;
     my $unescape = sub {
         my $escaped = shift;
@@ -106,24 +152,57 @@ CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_segment (TEXT) RETURNS
         return $escaped;
     };
 
-    my $chars = $unescape->( $_[0] );
-    my $VAR1;
-    eval($chars);
-    my $seg  = $VAR1->{'segment'};
-    my $from = {
-        'latitude'     => $seg->{'FromLatitude'},
-        'longitude'    => $seg->{'FromLongitude'},
-        'locationid'   => $seg->{'FromLocationID'},
-        'locationname' => $seg->{'FromLocationName'},
-        'projectid'    => $seg->{'ProjectID'},
+    my $sth = spi_query("SELECT * FROM perlhash AS b(a)");
+    while ( defined( my $row = spi_fetchrow($sth) ) ) {
+        my $chars = $unescape->( $row->{a} );
+        my $VAR1;
+        eval($chars);
+
+        # clean up some entries we are not using
+        my $location = $VAR1->{'location'};
+        my %bar = map { lc $_ => $location->{$_} } qw{
+          Latitude
+          LocationID
+          ProjectID
+          LocationName
+          Longitude
+        };
+        return_next \%bar;
+    }
+    return undef;
+$$ LANGUAGE plperl;
+
+
+CREATE OR REPLACE FUNCTION perl_xml_location_decoder_from_segment () RETURNS setof bt_xml_location AS $$
+    use strict;
+    my $unescape = sub {
+        my $escaped = shift;
+        $escaped =~ s/%u([0-9a-f]{4})/chr(hex($1))/eig;
+        $escaped =~ s/%([0-9a-f]{2})/chr(hex($1))/eig;
+        return $escaped;
     };
-    my $to = {
-        'latitude'   => $seg->{'ToLatitude'},
-        'longitude'  => $seg->{'ToLongitude'},
-        'locationid' => $seg->{'ToLocationID'},
-        'projectid'  => $seg->{'ProjectID'},
-    };
-    return_next $from;
-    return_next $to;
+    my $sth = spi_query("SELECT * FROM perlhash AS b(a)");
+    while ( defined(my $row = spi_fetchrow($sth) ) ) {
+        my $chars = $unescape->( $row->{a} );
+        my $VAR1;
+        eval($chars);
+        my $seg  = $VAR1->{'segment'};
+        my $from = {
+            'latitude'     => $seg->{'FromLatitude'},
+            'longitude'    => $seg->{'FromLongitude'},
+            'locationid'   => $seg->{'FromLocationID'},
+            'locationname' => $seg->{'FromLocationName'},
+            'projectid'    => $seg->{'ProjectID'},
+        };
+        my $to = {
+            'latitude'   => $seg->{'ToLatitude'},
+            'longitude'  => $seg->{'ToLongitude'},
+            'locationid' => $seg->{'ToLocationID'},
+            'locationname' => $seg->{'ToLocationName'},
+            'projectid'  => $seg->{'ProjectID'},
+        };
+        return_next $from;
+        return_next $to;
+    }
     return undef;
 $$ LANGUAGE plperl;

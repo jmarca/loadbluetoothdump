@@ -1,5 +1,5 @@
 SET search_path TO smartsig;
-drop if exists smartsig.bluetooth_data;
+drop table smartsig.bluetooth_data;
 CREATE TABLE smartsig.bluetooth_data  (
  id serial primary key,
  ts timestamp with time zone not null,
@@ -16,5 +16,5 @@ CREATE TABLE smartsig.bluetooth_data  (
  lastgoodpoll timestamp with time zone not null,
  speed numeric,
  speed_units varchar(32),
- xmlrecord xml
+ unique (ts,radar_lane_id,station_lane_id)
 );
