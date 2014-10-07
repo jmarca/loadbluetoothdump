@@ -49,7 +49,30 @@ CREATE TABLE bt_xml_observation(
   foreign key (data_ts,radar_lane_id,station_lane_id) references smartsig.bluetooth_data(ts,radar_lane_id,station_lane_id)
 );
 
+alter table smartsig.bt_xml_observation
+      add constraint datats_radar_station_idx
+          unique(data_ts,radar_lane_id,station_lane_id)  ;
 
+CREATE VIEW smartsig.bt_xml_and_data as
+select a.*,b.id,b.name,b.route,b.direction,b.postmile,b.enabled,b.firmware,
+       b.sample_interval,b.lastpolltime,b.lastgoodpoll,b.speed,b.speed_units,
+       s.*,
+       f.locationname as from_name,
+       f.latitude as from_latitude,
+       f.longitude as from_longitude,
+       t.locationname as to_name,
+       t.latitude as to_latitude,
+       t.longitude as to_longitude
+from smartsig.bt_xml_observation a
+join smartsig.bluetooth_data b ON (
+                             a.data_ts=b.ts and
+                             a.radar_lane_id=b.radar_lane_id and
+                             a.station_lane_id=b.station_lane_id)
+
+join smartsig.bt_xml_segment s USING(segmentid)
+join smartsig.bt_xml_location f ON(fromlocationid=f.locationid)
+join smartsig.bt_xml_location t ON(tolocationid=t.locationid)
+;
 
 CREATE OR REPLACE FUNCTION perl_xml_segment_decoder () RETURNS setof bt_xml_segment AS $$
     use strict;
