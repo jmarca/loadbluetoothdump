@@ -55,8 +55,8 @@ alter table smartsig.bt_xml_observation
 
 CREATE VIEW smartsig.bt_xml_and_data as
 select a.*,b.id,b.name,b.route,b.direction,b.postmile,b.enabled,b.firmware,
-       b.sample_interval,b.lastpolltime,b.lastgoodpoll,b.speed,b.speed_units,
-       s.*,
+       b.sample_interval,b.lastpolltime,b.lastgoodpoll,b.speed as speed_value,b.speed_units,
+       s.route as segmentroute,s.groupby,
        f.locationname as from_name,
        f.latitude as from_latitude,
        f.longitude as from_longitude,
