@@ -74,8 +74,8 @@ before(function(done){
 
         if(!c.postgresql.db){ throw new Error('need valid postgresql.db defined in test.config.json')}
         if(!c.postgresql.table){ throw new Error('need valid postgresql.table defined in test.config.json')}
-        if(!c.postgresql.user){ throw new Error('need valid postgresql.username defined in test.config.json')}
-        if(!c.postgresql.pass){ throw new Error('need valid postgresql.password defined in test.config.json')}
+        if(!c.postgresql.user){ throw new Error('need valid postgresql.user defined in test.config.json')}
+        if(!c.postgresql.pass){ throw new Error('need valid postgresql.pass defined in test.config.json')}
 
         // sane defaults
         if(c.postgresql.host === undefined) c.postgresql.host = 'localhost'
